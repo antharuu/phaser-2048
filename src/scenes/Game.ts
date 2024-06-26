@@ -2,6 +2,7 @@ import {Scene} from 'phaser';
 import {gameSize} from "../main.ts";
 
 type Tile = {
+    id: string,
     x: number,
     y: number,
     value: number | null,
@@ -73,6 +74,10 @@ export class Game extends Scene {
         }
     }
 
+    private generateId(): string {
+        return Math.random().toString(36).substr(2, 9);
+    }
+
     private createTileAt(x: number, y: number, value: number) {
         // Check if tile already exists
         if (this.map.has(`${x}__${y}`)) {
@@ -84,6 +89,7 @@ export class Game extends Scene {
         const element = this.createTile(leftPosition, topPosition);
 
         const tile: Tile = {
+            id: this.generateId(),
             x,
             y,
             value: null,
@@ -182,6 +188,10 @@ export class Game extends Scene {
         if (value !== 0) {
             const tileSize = this.getTileSize();
             const textSize = tileSize / 2;
+
+            if (tile.textElement) {
+                tile.textElement.destroy();
+            }
 
             const text = this.add.text(
                 tile.element.x + tileSize / 2,
@@ -296,7 +306,7 @@ export class Game extends Scene {
         const posAtDirection = this.getPositionAtDirection(x, y, direction, lastValidTileIndex);
 
         return posAtDirection ? {
-            x: merge ? posAtDirection.x + vector.x :posAtDirection.x,
+            x: merge ? posAtDirection.x + vector.x : posAtDirection.x,
             y: merge ? posAtDirection.y + vector.y : posAtDirection.y,
             merge
         } : null;
@@ -330,18 +340,33 @@ export class Game extends Scene {
             }
 
             this.tilesMovingQueue.push(tile);
-            await this.moveTileTo(tile, nextTile.x, nextTile.y, nextTile.merge, {x, y});
+            this.moveTileTo(tile, nextTile.x, nextTile.y);
         }
     }
 
-    mergeTile(tile: Tile, nextTile: { x: number, y: number }) {
-        console.log(tile, nextTile);
-        const nextTileValue = this.getTileAt(nextTile.x, nextTile.y)?.value ?? null;
+    mergeTile(oldTile: Tile, tile: Tile) {
+        console.log(tile, oldTile);
+        const nextTileValue = this.getTileAt(oldTile.x, oldTile.y)?.value ?? null;
         if (!nextTileValue) {
-            throw new Error(`Tile at ${nextTile.x}__${nextTile.y} has no value`);
+            throw new Error(`Tile at ${oldTile.x}__${oldTile.y} has no value`);
         }
 
-        console.log(`Merging tile at ${tile.x}__${tile.y} with tile at ${nextTile.x}__${nextTile.y}`);
+        console.log('Merging', oldTile, tile);
+
+        // Destroy tile element and text element
+        oldTile.textElement!.destroy();
+        oldTile.element.destroy();
+
+        tile.textElement!.destroy();
+        tile.element.destroy();
+
+        // Remove tile
+        this.map.delete(`${oldTile.x}__${oldTile.y}`);
+        this.map.delete(`${tile.x}__${tile.y}`);
+
+        // Create new combined tile
+        console.log('Creating new tile', oldTile.x, oldTile.y);
+        this.createTileAt(tile.x, tile.y, nextTileValue * 2);
     }
 
     private sortTilesByDirection(tiles: Array<Tile>, direction: Direction) {
@@ -362,7 +387,7 @@ export class Game extends Scene {
         });
     }
 
-    async moveTileTo(tile: Tile, x: number, y: number, merge: boolean, oldTilePosition?: { x: number, y: number }) {
+    moveTileTo(tile: Tile, x: number, y: number) {
         const {x: leftPosition, y: topPosition} = this.getTilePosition(x, y);
 
         // Move tile to new position with animation
@@ -375,10 +400,10 @@ export class Game extends Scene {
         }).on('complete', async () => {
             this.tilesMovingQueue = this.tilesMovingQueue.filter((t) => t !== tile);
 
-            console.log(merge, oldTilePosition);
-            if(merge && oldTilePosition) {
-                this.mergeTile(tile, oldTilePosition);
-            }
+            // console.log(merge, oldTilePosition);
+            // if(merge && oldTilePosition) {
+            //     this.mergeTile(tile, oldTilePosition);
+            // }
 
             this.map.delete(`${tile.x}__${tile.y}`);
 
@@ -392,8 +417,9 @@ export class Game extends Scene {
             tile.x = x;
             tile.y = y;
 
-            // Update map
-            this.map.set(`${x}__${y}`, tile);
+            const oldTile = this.map.get(`${x}__${y}`);
+            if (oldTile) this.mergeTile(tile, oldTile);
+            else this.map.set(`${x}__${y}`, tile);
         });
 
         // Move text to new position with same animation
@@ -415,7 +441,7 @@ export class Game extends Scene {
     }
 
     private async afterMove() {
-        const amountOfNewTiles = Math.random() > 0.8 ? 2 : 1;
+        const amountOfNewTiles = Math.random() > 0.95 ? 2 : 1;
         const positions = this.getRandomEmptyPosition(amountOfNewTiles);
 
         await this.wait(25)
