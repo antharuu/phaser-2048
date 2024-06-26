@@ -253,7 +253,7 @@ export class Game extends Scene {
         return {x: newX, y: newY};
     }
 
-    getAtDirection(x: number, y: number, direction: Direction): { x: number, y: number } | null {
+    getAtDirection(x: number, y: number, direction: Direction): { x: number, y: number, merge: boolean } | null {
         const positionAtDirection: { x: number, y: number }[] = [];
         const vector = this.getDirectionVector(direction);
 
@@ -272,20 +272,37 @@ export class Game extends Scene {
 
         // Correct handling of last valid tile index
         let lastValidTileIndex = 0;
-
-        if (tilesAtDirection[lastValidTileIndex] !== null) {
-            return null;
+        let tileAtLastValidIndex = tilesAtDirection[lastValidTileIndex];
+        let valueToMerge = this.getTileAt(x, y)?.value ?? null;
+        if (!valueToMerge) {
+            throw new Error(`Tile at ${x}__${y} has no value`);
         }
+
+        let merge = false;
 
         // Ensure that we do not access out of bounds and stop at the first non-null tile
-        while (lastValidTileIndex < tilesAtDirection.length && tilesAtDirection[lastValidTileIndex] === null) {
+        while (
+            // If value is not the same as the one we are trying to merge
+        (!merge && tileAtLastValidIndex?.value === valueToMerge)
+
+        // Check if we are not out of bounds and the tile is null
+        || (lastValidTileIndex < tilesAtDirection.length && tilesAtDirection[lastValidTileIndex] === null)
+            ) {
             lastValidTileIndex++;
+            tileAtLastValidIndex = tilesAtDirection[lastValidTileIndex];
+            merge = tileAtLastValidIndex?.value === valueToMerge
         }
 
-        return this.getPositionAtDirection(x, y, direction, lastValidTileIndex);
+        const posAtDirection = this.getPositionAtDirection(x, y, direction, lastValidTileIndex);
+
+        return posAtDirection ? {
+            x: merge ? posAtDirection.x + vector.x :posAtDirection.x,
+            y: merge ? posAtDirection.y + vector.y : posAtDirection.y,
+            merge
+        } : null;
     }
 
-    move(direction: Direction) {
+    async move(direction: Direction) {
         if (this.isMoving) {
             return;
         }
@@ -296,25 +313,35 @@ export class Game extends Scene {
         this.sortTilesByDirection(tiles, direction);
 
         // For each tile, check where it can move
-        tiles.forEach((tile) => {
+        for (const tile of tiles) {
             const {x, y} = tile;
             const value = tile.value;
 
             if (!value) {
                 console.error(`Tile at ${x}__${y} has no value`);
                 this.isMoving = false;
-                return;
+                continue;
             }
 
             const nextTile = this.getAtDirection(x, y, direction);
             if (!nextTile) {
                 this.isMoving = false;
-                return;
+                continue;
             }
 
             this.tilesMovingQueue.push(tile);
-            this.moveTileTo(tile, nextTile.x, nextTile.y);
-        });
+            await this.moveTileTo(tile, nextTile.x, nextTile.y, nextTile.merge, {x, y});
+        }
+    }
+
+    mergeTile(tile: Tile, nextTile: { x: number, y: number }) {
+        console.log(tile, nextTile);
+        const nextTileValue = this.getTileAt(nextTile.x, nextTile.y)?.value ?? null;
+        if (!nextTileValue) {
+            throw new Error(`Tile at ${nextTile.x}__${nextTile.y} has no value`);
+        }
+
+        console.log(`Merging tile at ${tile.x}__${tile.y} with tile at ${nextTile.x}__${nextTile.y}`);
     }
 
     private sortTilesByDirection(tiles: Array<Tile>, direction: Direction) {
@@ -335,9 +362,8 @@ export class Game extends Scene {
         });
     }
 
-    moveTileTo(tile: Tile, x: number, y: number) {
+    async moveTileTo(tile: Tile, x: number, y: number, merge: boolean, oldTilePosition?: { x: number, y: number }) {
         const {x: leftPosition, y: topPosition} = this.getTilePosition(x, y);
-        this.map.delete(`${tile.x}__${tile.y}`);
 
         // Move tile to new position with animation
         this.tweens.add({
@@ -348,11 +374,26 @@ export class Game extends Scene {
             ease: 'Power2'
         }).on('complete', async () => {
             this.tilesMovingQueue = this.tilesMovingQueue.filter((t) => t !== tile);
+
+            console.log(merge, oldTilePosition);
+            if(merge && oldTilePosition) {
+                this.mergeTile(tile, oldTilePosition);
+            }
+
+            this.map.delete(`${tile.x}__${tile.y}`);
+
             if (this.tilesMovingQueue.length === 0) {
                 await this.afterMove();
 
                 this.isMoving = false;
             }
+
+            // Update tile position
+            tile.x = x;
+            tile.y = y;
+
+            // Update map
+            this.map.set(`${x}__${y}`, tile);
         });
 
         // Move text to new position with same animation
@@ -362,16 +403,9 @@ export class Game extends Scene {
                 x: leftPosition + this.getTileSize() / 2,
                 y: topPosition + this.getTileSize() / 2,
                 duration: 200,
-                ease: 'Power2'
+                ease: 'Power2',
             });
         }
-
-        // Update tile position
-        tile.x = x;
-        tile.y = y;
-
-        // Update map
-        this.map.set(`${x}__${y}`, tile);
     }
 
     async wait(ms: number): Promise<void> {
