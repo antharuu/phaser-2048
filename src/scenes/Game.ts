@@ -147,12 +147,17 @@ export class Game extends Scene {
         }
 
         if (counter === 100) {
-            console.error('Could not find empty positions');
+            this.gameOver();
         }
+
+        console.log('Positions', ...positions);
 
         return positions;
     }
 
+    private gameOver() {
+        console.log('Game over');
+    }
 
     startingTiles() {
         // Take 2 random positions
@@ -344,7 +349,7 @@ export class Game extends Scene {
         }).on('complete', async () => {
             this.tilesMovingQueue = this.tilesMovingQueue.filter((t) => t !== tile);
             if (this.tilesMovingQueue.length === 0) {
-                this.afterMove();
+                await this.afterMove();
 
                 this.isMoving = false;
             }
@@ -379,15 +384,16 @@ export class Game extends Scene {
         const amountOfNewTiles = Math.random() > 0.8 ? 2 : 1;
         const positions = this.getRandomEmptyPosition(amountOfNewTiles);
 
-        await this.wait(250)
+        await this.wait(25)
 
         for (const position of positions) {
             const [x, y] = position.split('__').map(Number);
+            console.log(`Creating tile at ${x}__${y}`);
             this.createTileAt(x, y, Phaser.Math.RND.pick(this.STARTING_TILES_VALUES));
 
-            await this.wait(250)
+            await this.wait(25)
         }
 
-        await this.wait(250)
+        await this.wait(25)
     }
 }
