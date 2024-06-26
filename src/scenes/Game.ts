@@ -124,6 +124,36 @@ export class Game extends Scene {
         return positions;
     }
 
+    private isAllFree(positions: Set<string>) {
+        for (const position of positions) {
+            const [x, y] = position.split('__').map(Number);
+            if (this.getTileAt(x, y)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private getRandomEmptyPosition(amount: number) {
+        // Use this.getRandomPositions, and then filter out the ones that are not empty, max 100 times
+        let positions = this.getRandomPositions(amount);
+        let counter = 0;
+
+        // While is not all free and counter is less than 100, then try again
+        while (!this.isAllFree(positions) && counter < 100) {
+            positions = this.getRandomPositions(amount);
+            counter++;
+        }
+
+        if (counter === 100) {
+            console.error('Could not find empty positions');
+        }
+
+        return positions;
+    }
+
+
     startingTiles() {
         // Take 2 random positions
         const positions = this.getRandomPositions(this.AMOUNT_OF_STARTING_TILES);
@@ -255,7 +285,6 @@ export class Game extends Scene {
             return;
         }
 
-        console.log(`---> Start moving ${direction}`);
         this.isMoving = true;
         // Get all tiles
         const tiles = Array.from(this.map.values());
@@ -263,12 +292,11 @@ export class Game extends Scene {
 
         // For each tile, check where it can move
         tiles.forEach((tile) => {
-            console.log(`Tile at ${tile.x}__${tile.y} is ${tile.value}`);
             const {x, y} = tile;
             const value = tile.value;
 
             if (!value) {
-                console.log(`Tile at ${x}__${y} has no value`);
+                console.error(`Tile at ${x}__${y} has no value`);
                 this.isMoving = false;
                 return;
             }
@@ -313,12 +341,12 @@ export class Game extends Scene {
             y: topPosition,
             duration: 200,
             ease: 'Power2'
-        }).on('complete', () => {
+        }).on('complete', async () => {
             this.tilesMovingQueue = this.tilesMovingQueue.filter((t) => t !== tile);
-
             if (this.tilesMovingQueue.length === 0) {
+                this.afterMove();
+
                 this.isMoving = false;
-                console.log(`---> Finished moving ${tile.value} to ${x}__${y}`);
             }
         });
 
@@ -339,5 +367,27 @@ export class Game extends Scene {
 
         // Update map
         this.map.set(`${x}__${y}`, tile);
+    }
+
+    async wait(ms: number): Promise<void> {
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        });
+    }
+
+    private async afterMove() {
+        const amountOfNewTiles = Math.random() > 0.8 ? 2 : 1;
+        const positions = this.getRandomEmptyPosition(amountOfNewTiles);
+
+        await this.wait(250)
+
+        for (const position of positions) {
+            const [x, y] = position.split('__').map(Number);
+            this.createTileAt(x, y, Phaser.Math.RND.pick(this.STARTING_TILES_VALUES));
+
+            await this.wait(250)
+        }
+
+        await this.wait(250)
     }
 }
