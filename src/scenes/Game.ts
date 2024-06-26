@@ -324,7 +324,7 @@ export class Game extends Scene {
 
         // For each tile, check where it can move
         for (const tile of tiles) {
-            const {x, y} = tile;
+            const {x, y} = this.getTileAt(tile.x, tile.y) ?? {x: 0, y: 0};
             const value = tile.value;
 
             if (!value) {
