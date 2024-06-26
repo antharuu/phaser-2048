@@ -28,6 +28,8 @@ export class Game extends Scene {
 
     private map: Map<string, Tile> = new Map<string, Tile>();
 
+    private tilesMovingQueue: Array<Tile> = [];
+
     private readonly TILES_COLORS: Record<number, string> = {
         0: '#cdc1b4',
         2: '#eee4da',
@@ -253,6 +255,7 @@ export class Game extends Scene {
             return;
         }
 
+        console.log(`---> Start moving ${direction}`);
         this.isMoving = true;
         // Get all tiles
         const tiles = Array.from(this.map.values());
@@ -266,14 +269,17 @@ export class Game extends Scene {
 
             if (!value) {
                 console.log(`Tile at ${x}__${y} has no value`);
+                this.isMoving = false;
                 return;
             }
 
             const nextTile = this.getAtDirection(x, y, direction);
-            if(!nextTile) {
+            if (!nextTile) {
+                this.isMoving = false;
                 return;
             }
 
+            this.tilesMovingQueue.push(tile);
             this.moveTileTo(tile, nextTile.x, nextTile.y);
         });
     }
@@ -307,6 +313,13 @@ export class Game extends Scene {
             y: topPosition,
             duration: 200,
             ease: 'Power2'
+        }).on('complete', () => {
+            this.tilesMovingQueue = this.tilesMovingQueue.filter((t) => t !== tile);
+
+            if (this.tilesMovingQueue.length === 0) {
+                this.isMoving = false;
+                console.log(`---> Finished moving ${tile.value} to ${x}__${y}`);
+            }
         });
 
         // Move text to new position with same animation
